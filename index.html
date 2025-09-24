@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flashcard App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex flex-col items-center py-8">
+
+    <header class="bg-blue-600 text-white shadow mb-6 w-full fixed top-0 left-0 z-10">
+
+        <nav class="max-w-4xl mx-auto flex items-center justify-between p-4">
+            
+            <span class="font-bold text-2xl">Flashcard App</span>
+            <ul class="flex space-x-4">
+                <li><a href="#" class="hover:underline">Home</a></li>
+                <li><a href="#" class="hover:underline">About</a></li>
+            </ul>
+
+        </nav>
+
+    </header>
+
+    <div class="w-full max-w-md bg-white rounded-lg shadow p-6 mt-28">
+
+        <h1 class="text-2xl font-bold mb-4 text-center">Flashcard App</h1>
+
+        <form id="flashcard-form" class="mb-6 space-y-2">
+            <input id="question" type="text" placeholder="Question" class="w-full px-3 py-2 border rounded" required>
+            <input id="answer" type="text" placeholder="Answer" class="w-full px-3 py-2 border rounded" required>
+            <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Add
+                Flashcard</button>
+        </form>
+
+        <div id="flashcards" class="space-y-4"></div>
+
+    </div>
+
+</body>
+
+</html>
