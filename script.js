@@ -4,30 +4,30 @@
 document.addEventListener("click", function (e) {
     if (e.target.id === "home") {
         renderHomePage();
-    } else if (e.target.id === "create" || e.target.textContent.includes("Get Started")) {
-        // Check if there are any sets, if not create a default one
+    } else if (e.target.id === "get-started") {
+        // Check if there are any sets, if not prompt to create one
         const sets = getSets();
         if (sets.length === 0) {
-            const setId = createNewSet("My First Set");
-            setCurrentSetId(setId);
-        } else {
-            // If there are sets but no current set, go to sets page
-            const currentSetId = getCurrentSetId();
-            if (!currentSetId) {
-                renderSetsPage();
-                return;
+            const setName = prompt("Enter a name for your first set:");
+            if (setName && setName.trim()) {
+                const setId = createNewSet(setName.trim());
+                setCurrentSetId(setId);
+                renderCreatePage();
             }
+        } else {
+            // If there are sets, go to sets page to choose one
+            renderSetsPage();
         }
-        renderCreatePage();
-    } else if (e.target.id === "sets") {
-        renderSetsPage();
-    } else if (e.target.id === "create-new-set") {
+    } else if (e.target.id === "create" || e.target.id === "create-new-set" || e.target.id === "create-new-set-home") {
+        // Always create a new set when clicking create buttons
         const setName = prompt("Enter a name for your new set:");
         if (setName && setName.trim()) {
             const setId = createNewSet(setName.trim());
             setCurrentSetId(setId);
             renderCreatePage();
         }
+    } else if (e.target.id === "sets") {
+        renderSetsPage();
     } else if (e.target.classList.contains("rename-set")) {
         e.stopPropagation(); // Prevent triggering set-card click
         const setId = e.target.dataset.setId;
@@ -200,11 +200,11 @@ function renderHomePage() {
            but it works!
        </p>
        <div class="flex flex-col sm:flex-row justify-center gap-4">
-           <a href="#" id="create" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">Get
+           <a href="#" id="get-started" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">Get
                Started</a>
            <a href="#" id="sets" class="bg-gray-200 text-blue-700 px-6 py-2 rounded hover:bg-gray-300 transition">Browse My
                Flashcards</a>
-           <a href="#" id="create" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition">Create New
+           <a href="#" id="create-new-set-home" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition">Create New
                Set</a>
        </div>
        <p class="text-xs">
