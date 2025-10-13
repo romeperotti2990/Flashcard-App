@@ -1,60 +1,59 @@
 //#region Setup
 
 // Use event delegation to handle clicks on dynamically created elements
-document.addEventListener("click", function (e) {
-    if (e.target.id === "home") {
-        renderHomePage();
-    } else if (e.target.id === "get-started") {
-        // Check if there are any sets, if not prompt to create one
-        const sets = getSets();
-        if (sets.length === 0) {
-            const setName = prompt("Enter a name for your first set:");
-            if (setName && setName.trim()) {
-                const setId = createNewSet(setName.trim());
-                setCurrentSetId(setId);
-                renderCreatePage();
-            }
-        } else {
-            // If there are sets, go to sets page to choose one
-            renderSetsPage();
-        }
-    } else if (e.target.id === "create" || e.target.id === "create-new-set" || e.target.id === "create-new-set-home") {
-        // Always create a new set when clicking create buttons
-        const setName = prompt("Enter a name for your new set:");
-        if (setName && setName.trim()) {
-            const setId = createNewSet(setName.trim());
-            setCurrentSetId(setId);
-            renderCreatePage();
-        }
-    } else if (e.target.id === "sets") {
-        renderSetsPage();
-    } else if (e.target.classList.contains("rename-set")) {
-        e.stopPropagation(); // Prevent triggering set-card click
-        const setId = e.target.dataset.setId;
-        const currentName = e.target.dataset.setName;
-        const newName = prompt("Enter new name for the set:", currentName);
-        if (newName && newName.trim() && newName.trim() !== currentName) {
-            renameSet(setId, newName.trim());
-            renderSetsPage();
-        }
-    } else if (e.target.classList.contains("delete-set")) {
-        e.stopPropagation(); // Prevent triggering set-card click
-        const setId = e.target.dataset.setId;
-        const setName = e.target.dataset.setName;
-        if (confirm(`Are you sure you want to delete the set "${setName}"? This action cannot be undone.`)) {
-            deleteSet(setId);
-            renderSetsPage();
-        }
-    } else if ((e.target.classList.contains("set-card") || e.target.closest(".set-card")) && !e.target.classList.contains("delete-set") && !e.target.classList.contains("rename-set")) {
-        // Handle clicks on set cards or their child elements, but not on delete buttons
-        const setCard = e.target.classList.contains("set-card") ? e.target : e.target.closest(".set-card");
-        const setId = setCard.dataset.setId;
-        setCurrentSetId(setId);
-        renderCreatePage();
+document.addEventListener('click', e => {
+    const el = e.target;
+    const a = (el.closest && el.closest('[data-action]')) || el;
+    const action = a.dataset && (a.dataset.action || a.id);
+
+    if (action === 'quiz') {
+        const currentSetId = getCurrentSetId();
+        if (currentSetId) { startQuiz(currentSetId); }
+        return;
     }
+
+    if (action === 'home') { updateUserPage('home'); renderUserPage(); return; }
+
+    if (action === 'get-started') {
+        const sets = getSets();
+        if (!sets.length) {
+            const name = prompt('Enter a name for your first set:');
+            if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); updateUserPage('create'); renderUserPage(); }
+        } else { updateUserPage('sets'); renderUserPage(); }
+        return;
+    }
+
+    if (action === 'create' || action === 'create-new-set' || action === 'create-new-set-home') {
+        const name = prompt('Enter a name for your new set:');
+        if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); updateUserPage('create'); renderUserPage(); }
+        return;
+    }
+
+    if (action === 'sets') { updateUserPage('sets'); renderUserPage(); return; }
+
+    if (a.classList && a.classList.contains('rename-set')) {
+        e.stopPropagation();
+        const id = a.dataset.setId, cur = a.dataset.setName || '';
+        const n = prompt('Enter new name for the set:', cur);
+        if (n && n.trim() && n.trim() !== cur) { renameSet(id, n.trim()); renderSetsPage(); }
+        return;
+    }
+
+    if (a.classList && a.classList.contains('delete-set')) {
+        e.stopPropagation();
+        const id = a.dataset.setId, nm = a.dataset.setName || '';
+        if (confirm(`Are you sure you want to delete the set "${nm}"?`)) { deleteSet(id); renderSetsPage(); }
+        return;
+    }
+
+    const card = a.closest && a.closest('.set-card');
+    if (card) { setCurrentSetId(card.dataset.setId); updateUserPage('create'); renderUserPage(); }
 });
 
 let page = localStorage.getItem("page") || "home";
+
+// quizState holds the active quiz
+let quizState = null;
 
 //#endregion
 
@@ -182,7 +181,7 @@ function deleteSet(setId) {
     saveSets(filteredSets);
 }
 
-// Delete card from current set (for onclick handlers)
+// Delete card from current set (adds the event listener)
 function deleteCardFromCurrentSet(cardIndex) {
     const currentSetId = getCurrentSetId();
     if (currentSetId) {
@@ -222,22 +221,23 @@ function renderHomePage() {
 function renderCreatePage() {
     const currentSetId = getCurrentSetId();
     const currentSet = currentSetId ? getSetById(currentSetId) : null;
-    
+
     if (!currentSet) {
         // No set selected, redirect to sets page
         renderSetsPage();
         return;
     }
-    
+
     document.getElementById("main").innerHTML = `
     <div class="w-full max-w-2xl">
         <div class="bg-white rounded-lg shadow p-6">
             <div class="flex justify-between items-center mb-4">
                 <h1 class="text-2xl font-bold text-blue-700" id="set-title">${currentSet.name}</h1>
+                <button id="quiz" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Quiz Set</button>
                 <button id="back-to-sets" class="text-blue-500 hover:underline">← Back to Sets</button>
             </div>
 
-            <form id="flashcard-form" class="mb-6 space-y-2">
+            <form id="flashcard-form" class="mb-6 space-y-2" autocomplete="off">
                 <input id="question" type="text" placeholder="Question" class="w-full px-3 py-2 border rounded" required>
                 <input id="answer" type="text" placeholder="Answer" class="w-full px-3 py-2 border rounded" required>
                 <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Add Flashcard</button>
@@ -285,7 +285,7 @@ function renderSetsPage() {
     const sets = getSets();
     const container = document.getElementById('sets-container');
     container.innerHTML = '';
-    
+
     if (sets.length === 0) {
         container.innerHTML = `<div class="col-span-full text-center text-gray-500 py-8">No sets created yet. Create your first set!</div>`;
     } else {
@@ -318,6 +318,9 @@ function renderUserPage() {
         renderCreatePage();
     } else if (page === "sets") {
         renderSetsPage();
+    } else if (page === "quiz") {
+        const currentSetId = getCurrentSetId();
+        if (currentSetId) { startQuiz(currentSetId);  }
     } else {
         // Default to home page if no valid page is found
         renderHomePage();
@@ -331,7 +334,7 @@ function recreateForm() {
         const question = document.getElementById('question').value.trim();
         const answer = document.getElementById('answer').value.trim();
         const currentSetId = getCurrentSetId();
-        
+
         if (question && answer && currentSetId) {
             addCardToSet(currentSetId, question, answer);
             renderFlashcards();
@@ -344,20 +347,20 @@ function recreateForm() {
 function renderFlashcards() {
     const currentSetId = getCurrentSetId();
     if (!currentSetId) return;
-    
+
     const currentSet = getSetById(currentSetId);
     if (!currentSet) return;
-    
+
     const container = document.getElementById('flashcards');
     if (!container) return;
-    
+
     container.innerHTML = '';
-    
+
     if (currentSet.cards.length === 0) {
         container.innerHTML = `<div class="text-center text-gray-500 py-4">No cards in this set yet. Add your first card above!</div>`;
         return;
     }
-    
+
     currentSet.cards.forEach((card, idx) => {
         const cardDiv = document.createElement('div');
         cardDiv.className = "bg-gray-50 border rounded p-4 flex justify-between items-center";
@@ -375,12 +378,206 @@ function renderFlashcards() {
     });
 }
 
+function getFlashcards() {
+    const currentSetId = getCurrentSetId();
+    if (!currentSetId) return [];
+    const currentSet = getSetById(currentSetId);
+    return currentSet ? currentSet.cards : [];
+}
+
 // Legacy function - kept for compatibility but should use deleteCardFromCurrentSet instead
 function deleteFlashcard(idx) {
     const flashcards = getFlashcards();
     flashcards.splice(idx, 1);
     saveFlashcards(flashcards);
     renderFlashcards();
+}
+
+// Simple shuffle (Fisher–Yates)
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// Start a quiz for a set id
+function startQuiz(setId) {
+    updateUserPage("quiz");
+    const set = getSetById(setId);
+    if (!set) {
+        alert('Set not found.');
+        return;
+    }
+    if (!set.cards || set.cards.length === 0) {
+        alert('This set has no cards.');
+        return;
+    }
+
+    // build a shuffled order of indexes
+    const order = shuffle(Array.from({ length: set.cards.length }, (_, i) => i));
+    quizState = {
+        setId,
+        order,
+        idx: 0,        // current position in order
+        score: 0,
+        answers: []    // optionally store results
+    };
+
+    renderQuiz(); // render the quiz UI into #main
+}
+
+// Render current quiz question
+function renderQuiz() {
+    if (!quizState) return;
+    const set = getSetById(quizState.setId);
+    if (!set) return;
+
+    const cardIndex = quizState.order[quizState.idx];
+    const card = set.cards[cardIndex];
+    const progress = `${quizState.idx + 1} / ${quizState.order.length}`;
+
+    document.getElementById('main').innerHTML = `
+    <div class="max-w-2xl mx-auto p-6 bg-white rounded shadow">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold">Quiz: ${escapeHtml(set.name)}</h2>
+        <div class="text-sm text-gray-500">${progress}</div>
+      </div>
+
+      <div id="quiz-question" class="mb-4">
+        <div class="text-lg font-semibold mb-2">Question</div>
+        <div class="mb-4">${escapeHtml(card.question)}</div>
+      </div>
+
+      <form id="quiz-form" class="mb-2">
+        <input id="quiz-answer" autocomplete="off" class="w-full px-3 py-2 border rounded" placeholder="Type your answer" />
+        <div class="flex gap-2 mt-3">
+          <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Submit</button>
+          <button type="button" id="show-answer" class="bg-gray-200 px-4 py-2 rounded">Show answer</button>
+        </div>
+      </form>
+
+      <div id="quiz-feedback" class="mt-4"></div>
+
+      <div class="mt-4 flex justify-between">
+        <button id="quiz-back" class="text-blue-500 hover:underline">Back to Set</button>
+        <div id="quiz-progress"></div>
+      </div>
+    </div>
+  `;
+
+    // attach handlers (simple)
+    document.getElementById('quiz-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        submitAnswer();
+    });
+
+    document.getElementById('show-answer').addEventListener('click', function () {
+        const feedback = document.getElementById('quiz-feedback');
+        feedback.innerHTML = `<div class="text-sm text-gray-700">Answer: <strong>${escapeHtml(card.answer)}</strong></div>`;
+    });
+
+    document.getElementById('quiz-back').addEventListener('click', function () {
+        setCurrentSetId(quizState.setId);
+        quizState = null;
+        renderCreatePage(); // go back to editing/viewing that set (use your existing function)
+    });
+
+    updateQuizProgress();
+}
+
+// Submit the user's answer for current question
+function submitAnswer() {
+    if (!quizState) return;
+    const set = getSetById(quizState.setId);
+    const cardIndex = quizState.order[quizState.idx];
+    const card = set.cards[cardIndex];
+
+    const input = document.getElementById('quiz-answer');
+    const user = (input && input.value || '').trim();
+
+    const correct = normalizeAnswer(user) === normalizeAnswer(card.answer);
+
+    // store result
+    quizState.answers.push({ idx: cardIndex, user, correct });
+    if (correct) quizState.score++;
+
+    // show feedback and next button
+    const fb = document.getElementById('quiz-feedback');
+    if (correct) {
+        fb.innerHTML = `<div class="text-green-600 font-semibold">Correct!</div>`;
+    } else {
+        fb.innerHTML = `<div class="text-red-600 font-semibold">Incorrect.</div>
+                    <div class="text-sm mt-1">Answer: <strong>${escapeHtml(card.answer)}</strong></div>`;
+    }
+
+    // disable input and show Next or Finish button
+    if (input) input.disabled = true;
+    const controls = document.createElement('div');
+    controls.className = 'mt-3';
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'bg-blue-600 text-white px-3 py-1 rounded';
+    if (quizState.idx + 1 < quizState.order.length) {
+        nextBtn.textContent = 'Next';
+        nextBtn.addEventListener('click', () => {
+            quizState.idx++;
+            renderQuiz();
+        });
+    } else {
+        nextBtn.textContent = 'Finish';
+        nextBtn.addEventListener('click', () => {
+            endQuiz();
+        });
+    }
+    fb.appendChild(controls);
+    controls.appendChild(nextBtn);
+}
+
+// End quiz and show summary
+function endQuiz() {
+    if (!quizState) return;
+    const set = getSetById(quizState.setId);
+    const total = quizState.order.length;
+    const score = quizState.score;
+
+    // optionally persist last result: localStorage.setItem('lastQuiz', JSON.stringify({...}))
+    document.getElementById('main').innerHTML = `
+    <div class="max-w-md mx-auto p-6 bg-white rounded shadow text-center">
+      <h2 class="text-2xl font-bold mb-4">Quiz Complete</h2>
+      <p class="text-lg mb-4">You scored ${score} / ${total}</p>
+      <div class="flex justify-center gap-3">
+        <button id="quiz-retry" class="bg-green-500 text-white px-4 py-2 rounded">Retry</button>
+        <button id="quiz-back-to-set" class="bg-gray-200 px-4 py-2 rounded">Back to Set</button>
+      </div>
+    </div>
+  `;
+
+    document.getElementById('quiz-retry').addEventListener('click', () => {
+        // restart: reshuffle and reset counters
+        startQuiz(quizState.setId);
+    });
+    document.getElementById('quiz-back-to-set').addEventListener('click', () => {
+        setCurrentSetId(quizState.setId);
+        quizState = null;
+        renderCreatePage();
+    });
+}
+
+// small helpers
+function normalizeAnswer(s) {
+    return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+// Escape HTML for safe output
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+}
+
+// update progress text (optional)
+function updateQuizProgress() {
+    const p = document.getElementById('quiz-progress');
+    if (!p || !quizState) return;
+    p.textContent = `Score: ${quizState.score}, Q: ${quizState.idx + 1}/${quizState.order.length}`;
 }
 
 //#endregion
