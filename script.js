@@ -101,7 +101,19 @@ function saveFlashcards(flashcards) {
 
 // Load sets from localStorage
 function getSets() {
-    return JSON.parse(localStorage.getItem('cardSets') || '[]');
+    let sets = JSON.parse(localStorage.getItem('cardSets') || '[]');
+    // Migrate old cards with single answer to answers array
+    sets.forEach(set => {
+        set.cards.forEach(card => {
+            if (typeof card.answer === 'string') {
+                card.answers = [card.answer];
+                delete card.answer;
+            }
+        });
+    });
+    // Save migrated data
+    localStorage.setItem('cardSets', JSON.stringify(sets));
+    return sets;
 }
 
 // Save sets to localStorage
@@ -139,11 +151,11 @@ function getSetById(setId) {
 }
 
 // Add card to specific set
-function addCardToSet(setId, question, answer) {
+function addCardToSet(setId, question, answers) {
     const sets = getSets();
     const setIndex = sets.findIndex(set => set.id === setId);
     if (setIndex !== -1) {
-        sets[setIndex].cards.push({ question, answer });
+        sets[setIndex].cards.push({ question, answers });
         saveSets(sets);
         return true;
     }
@@ -229,17 +241,23 @@ function renderCreatePage() {
     }
 
     document.getElementById("main").innerHTML = `
-    <div class="w-full max-w-2xl">
-        <div class="bg-white rounded-lg shadow p-6">
-            <div class="flex justify-between items-center mb-4">
+    <div class="w-full px-4">
+        <div class="bg-white rounded-lg shadow p-4 w-full">
+            <div class="flex justify-between items-center mb-4 ">
                 <h1 class="text-2xl font-bold text-blue-700" id="set-title">${currentSet.name}</h1>
                 <button id="quiz" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Quiz Set</button>
                 <button id="back-to-sets" class="text-blue-500 hover:underline">← Back to Sets</button>
             </div>
 
             <form id="flashcard-form" class="mb-6 space-y-2" autocomplete="off">
-                <input id="question" type="text" placeholder="Question" class="w-full px-3 py-2 border rounded" required>
-                <input id="answer" type="text" placeholder="Answer" class="w-full px-3 py-2 border rounded" required>
+                <input id="question" type="text" placeholder="Question" class="w-full min-w-96 px-3 py-2 border rounded" required>
+                <div id="answers-container">
+                    <div class="answer-input flex space-x-2">
+                        <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded" required>
+                        <button type="button" class="remove-answer text-red-500 hover:underline" style="display:none;">Remove</button>
+                    </div>
+                </div>
+                <button type="button" id="add-answer" class="text-blue-500 hover:underline">+ Add Another Answer</button>
                 <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Add Flashcard</button>
             </form>
 
@@ -332,13 +350,42 @@ function recreateForm() {
     document.getElementById('flashcard-form').addEventListener('submit', function (e) {
         e.preventDefault();
         const question = document.getElementById('question').value.trim();
-        const answer = document.getElementById('answer').value.trim();
+        const answerInputs = document.querySelectorAll('.answer-field');
+        const answers = Array.from(answerInputs).map(input => input.value.trim()).filter(ans => ans);
         const currentSetId = getCurrentSetId();
 
-        if (question && answer && currentSetId) {
-            addCardToSet(currentSetId, question, answer);
+        if (question && answers.length > 0 && currentSetId) {
+            addCardToSet(currentSetId, question, answers);
             renderFlashcards();
             this.reset();
+            // Reset to single answer input
+            const container = document.getElementById('answers-container');
+            container.innerHTML = `
+                <div class="answer-input flex space-x-2">
+                    <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded" required>
+                    <button type="button" class="remove-answer text-red-500 hover:underline" style="display:none;">Remove</button>
+                </div>
+            `;
+        }
+    });
+
+    // Handle add answer button
+    document.getElementById('add-answer').addEventListener('click', function() {
+        const container = document.getElementById('answers-container');
+        const count = container.querySelectorAll('.answer-input').length + 1;
+        const div = document.createElement('div');
+        div.className = 'answer-input flex space-x-2';
+        div.innerHTML = `
+            <input type="text" placeholder="Answer ${count}" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded">
+            <button type="button" class="remove-answer text-red-500 hover:underline">Remove</button>
+        `;
+        container.appendChild(div);
+    });
+
+    // Handle remove answer buttons (event delegation)
+    document.getElementById('answers-container').addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-answer')) {
+            e.target.closest('.answer-input').remove();
         }
     });
 }
@@ -364,10 +411,11 @@ function renderFlashcards() {
     currentSet.cards.forEach((card, idx) => {
         const cardDiv = document.createElement('div');
         cardDiv.className = "bg-gray-50 border rounded p-4 flex justify-between items-center";
+        const answersHtml = card.answers.map(ans => escapeHtml(ans)).join('<br>');
         cardDiv.innerHTML = `
             <div>
-                <div class="font-semibold">${card.question}</div>
-                <div class="text-gray-600 hidden" id="answer-${idx}">${card.answer}</div>
+                <div class="font-semibold">${escapeHtml(card.question)}</div>
+                <div class="text-gray-600 hidden" id="answer-${idx}">${answersHtml}</div>
             </div>
             <div class="flex space-x-2">
                 <button class="text-blue-500 hover:underline" onclick="document.getElementById('answer-${idx}').classList.toggle('hidden')">Show</button>
@@ -475,7 +523,8 @@ function renderQuiz() {
 
     document.getElementById('show-answer').addEventListener('click', function () {
         const feedback = document.getElementById('quiz-feedback');
-        feedback.innerHTML = `<div class="text-sm text-gray-700">Answer: <strong>${escapeHtml(card.answer)}</strong></div>`;
+        const answersHtml = card.answers.map(ans => escapeHtml(ans)).join('<br>');
+        feedback.innerHTML = `<div class="text-sm text-gray-700">Answer(s): <strong>${answersHtml}</strong></div>`;
     });
 
     document.getElementById('quiz-back').addEventListener('click', function () {
@@ -497,7 +546,7 @@ function submitAnswer() {
     const input = document.getElementById('quiz-answer');
     const user = (input && input.value || '').trim();
 
-    const correct = normalizeAnswer(user) === normalizeAnswer(card.answer);
+    const correct = card.answers.some(ans => normalizeAnswer(user) === normalizeAnswer(ans));
 
     // store result
     quizState.answers.push({ idx: cardIndex, user, correct });
@@ -509,7 +558,7 @@ function submitAnswer() {
         fb.innerHTML = `<div class="text-green-600 font-semibold">Correct!</div>`;
     } else {
         fb.innerHTML = `<div class="text-red-600 font-semibold">Incorrect.</div>
-                    <div class="text-sm mt-1">Answer: <strong>${escapeHtml(card.answer)}</strong></div>`;
+                    <div class="text-sm mt-1">Answer(s): <strong>${card.answers.map(ans => escapeHtml(ans)).join(', ')}</strong></div>`;
     }
 
     // disable input and show Next or Finish button
@@ -568,6 +617,7 @@ function endQuiz() {
 function normalizeAnswer(s) {
     return (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
+
 // Escape HTML for safe output
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
