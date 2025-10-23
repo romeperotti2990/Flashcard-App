@@ -6,21 +6,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Flashcard App</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
     <script defer src="script.js"></script>
 </head>
 
-<body class="bg-gray-100 min-h-screen flex flex-col items-center">
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex flex-col items-center">
 
-    <header class="bg-blue-600 text-white shadow mb-6 w-full">
+    <header class="bg-blue-600 dark:bg-blue-800 text-white shadow mb-6 w-full">
 
         <nav class="max-w-4xl mx-auto flex items-center justify-between p-4">
 
             <span class="font-bold text-2xl">Flashcard App</span>
-            <ul class="flex space-x-4">
-                <li><a href="#" class="underline hover:underline" id="home">Home</a></li>
-                <li><a href="#" class="hover:underline" id="create">Create</a></li>
-                <li><a href="#" class="hover:underline" id="sets">My Flashcards</a></li>
-            </ul>
+            <div class="flex items-center space-x-4">
+                <ul class="flex space-x-4">
+                    <li><a href="#" class="underline hover:underline text-white" id="home">Home</a></li>
+                    <li><a href="#" class="hover:underline text-white" id="create">Create</a></li>
+                    <li><a href="#" class="hover:underline text-white" id="sets">My Flashcards</a></li>
+                </ul>
+                <button id="dark-mode-toggle" class="text-white hover:text-gray-200">🌙</button>
+            </div>
 
         </nav>
 
@@ -29,8 +37,6 @@
     <main id="main">
         
     </main>
-
-
 
 </body>
 

@@ -3,51 +3,70 @@
 // Use event delegation to handle clicks on dynamically created elements
 document.addEventListener('click', e => {
     const el = e.target;
-    const a = (el.closest && el.closest('[data-action]')) || el;
-    const action = a.dataset && (a.dataset.action || a.id);
+    const actionEl = (el.closest && el.closest('[data-action]')) || el;
+    const action = actionEl && actionEl.dataset && (actionEl.dataset.action || actionEl.id);
 
-    if (action === 'quiz') {
-        const currentSetId = getCurrentSetId();
-        if (currentSetId) { startQuiz(currentSetId); }
-        return;
-    }
+    const go = (pageName, setId = null) => {
+        if (setId) setCurrentSetId(setId);
+        updateUserPage(pageName);
+        renderUserPage();
+    };
 
-    if (action === 'home') { updateUserPage('home'); renderUserPage(); return; }
-
-    if (action === 'get-started') {
-        const sets = getSets();
-        if (!sets.length) {
-            const name = prompt('Enter a name for your first set:');
-            if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); updateUserPage('create'); renderUserPage(); }
-        } else { updateUserPage('sets'); renderUserPage(); }
-        return;
-    }
-
-    if (action === 'create' || action === 'create-new-set' || action === 'create-new-set-home') {
+    const createSetFlow = () => {
         const name = prompt('Enter a name for your new set:');
-        if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); updateUserPage('create'); renderUserPage(); }
+        if (name && name.trim()) {
+            setCurrentSetId(createNewSet(name.trim()));
+            go('create');
+        }
+    };
+
+    // Action handlers map
+    const handlers = {
+        quiz: () => { const id = getCurrentSetId(); if (id) startQuiz(id); },
+        home: () => go('home'),
+        'get-started': () => {
+            const sets = getSets();
+            if (!sets.length) {
+                const name = prompt('Enter a name for your first set:');
+                if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); go('create'); }
+            } else go('sets');
+        },
+        create: createSetFlow,
+        'create-new-set': createSetFlow,
+        'create-new-set-home': createSetFlow,
+        sets: () => go('sets')
+    };
+
+    if (action && handlers[action]) {
+        e.preventDefault();
+        handlers[action]();
         return;
     }
 
-    if (action === 'sets') { updateUserPage('sets'); renderUserPage(); return; }
-
-    if (a.classList && a.classList.contains('rename-set')) {
+    // Per-element class handlers
+    const renameBtn = el.closest && el.closest('.rename-set');
+    if (renameBtn) {
         e.stopPropagation();
-        const id = a.dataset.setId, cur = a.dataset.setName || '';
+        const id = renameBtn.dataset.setId, cur = renameBtn.dataset.setName || '';
         const n = prompt('Enter new name for the set:', cur);
         if (n && n.trim() && n.trim() !== cur) { renameSet(id, n.trim()); renderSetsPage(); }
         return;
     }
 
-    if (a.classList && a.classList.contains('delete-set')) {
+    const deleteBtn = el.closest && el.closest('.delete-set');
+    if (deleteBtn) {
         e.stopPropagation();
-        const id = a.dataset.setId, nm = a.dataset.setName || '';
+        const id = deleteBtn.dataset.setId, nm = deleteBtn.dataset.setName || '';
         if (confirm(`Are you sure you want to delete the set "${nm}"?`)) { deleteSet(id); renderSetsPage(); }
         return;
     }
 
-    const card = a.closest && a.closest('.set-card');
-    if (card) { setCurrentSetId(card.dataset.setId); updateUserPage('create'); renderUserPage(); }
+    // Clicking a set card opens it
+    const card = el.closest && el.closest('.set-card');
+    if (card) {
+        setCurrentSetId(card.dataset.setId);
+        go('create');
+    }
 });
 
 let page = localStorage.getItem("page") || "home";
@@ -205,20 +224,20 @@ function deleteCardFromCurrentSet(cardIndex) {
 function renderHomePage() {
     document.getElementById("main").innerHTML = `
     <div class="flex flex-col items-center justify-center min-h-[60vh] w-full">
-       <h1 class="text-3xl font-bold mb-4 text-blue-700">Welcome to 'Flashcard App!'</h1>
-       <p class="mb-6 text-gray-700">
+       <h1 class="text-3xl font-bold mb-4 text-blue-700 dark:text-blue-300">Welcome to 'Flashcard App!'</h1>
+       <p class="mb-6 text-gray-700 dark:text-gray-300">
            I am making this for a college project, it uses local storage to make flashcards and sets. It's not too fancy,
            but it works!
        </p>
        <div class="flex flex-col sm:flex-row justify-center gap-4">
-           <a href="#" id="get-started" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">Get
+           <a href="#" id="get-started" class="bg-blue-600 dark:bg-blue-700 text-white px-6 py-2 rounded hover:bg-blue-700 dark:hover:bg-blue-800 transition">Get
                Started</a>
-           <a href="#" id="sets" class="bg-gray-200 text-blue-700 px-6 py-2 rounded hover:bg-gray-300 transition">Browse My
+           <a href="#" id="sets" class="bg-gray-200 dark:bg-gray-700 text-blue-700 dark:text-blue-300 px-6 py-2 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition">Browse My
                Flashcards</a>
-           <a href="#" id="create-new-set-home" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition">Create New
+           <a href="#" id="create-new-set-home" class="bg-green-500 dark:bg-green-600 text-white px-6 py-2 rounded hover:bg-green-600 dark:hover:bg-green-700 transition">Create New
                Set</a>
        </div>
-       <p class="text-xs">
+       <p class="text-xs text-gray-500 dark:text-gray-400">
            (if you are some random stranger who found this, I don't care if you use this, the github repo is at: https://github.com/romeperotti2990/Flashcard-App)
        </p>
     </div>
@@ -242,23 +261,23 @@ function renderCreatePage() {
 
     document.getElementById("main").innerHTML = `
     <div class="w-full px-4">
-        <div class="bg-white rounded-lg shadow p-4 w-full">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 w-full">
             <div class="flex justify-between items-center mb-4 ">
-                <h1 class="text-2xl font-bold text-blue-700" id="set-title">${currentSet.name}</h1>
-                <button id="quiz" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Quiz Set</button>
-                <button id="back-to-sets" class="text-blue-500 hover:underline">← Back to Sets</button>
+                <h1 class="text-2xl font-bold text-blue-700 dark:text-blue-300" id="set-title">${currentSet.name}</h1>
+                <button id="quiz" class="bg-blue-600 dark:bg-blue-700 text-white px-3 py-1 rounded hover:bg-blue-700 dark:hover:bg-blue-800">Quiz Set</button>
+                <button id="back-to-sets" class="text-blue-500 dark:text-blue-400 hover:underline">← Back to Sets</button>
             </div>
 
             <form id="flashcard-form" class="mb-6 space-y-2" autocomplete="off">
-                <input id="question" type="text" placeholder="Question" class="w-full min-w-96 px-3 py-2 border rounded" required>
+                <input id="question" type="text" placeholder="Question" class="w-full min-w-96 px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" required>
                 <div id="answers-container">
                     <div class="answer-input flex space-x-2">
-                        <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded" required>
-                        <button type="button" class="remove-answer text-red-500 hover:underline" style="display:none;">Remove</button>
+                        <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" required>
+                        <button type="button" class="remove-answer text-red-500 dark:text-red-400 hover:underline" style="display:none;">Remove</button>
                     </div>
                 </div>
-                <button type="button" id="add-answer" class="text-blue-500 hover:underline">+ Add Another Answer</button>
-                <button type="submit" class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Add Flashcard</button>
+                <button type="button" id="add-answer" class="text-blue-500 dark:text-blue-400 hover:underline">+ Add Another Answer</button>
+                <button type="submit" class="w-full bg-blue-500 dark:bg-blue-600 text-white py-2 rounded hover:bg-blue-600 dark:hover:bg-blue-700">Add Flashcard</button>
             </form>
 
             <div id="flashcards" class="space-y-4"></div>
@@ -286,9 +305,9 @@ function renderCreatePage() {
 function renderSetsPage() {
     document.getElementById("main").innerHTML = `
         <div class="w-full max-w-4xl">
-            <h1 class="text-2xl font-bold mb-4 text-center text-blue-700">My Flashcard Sets</h1>
+            <h1 class="text-2xl font-bold mb-4 text-center text-blue-700 dark:text-blue-300">My Flashcard Sets</h1>
             <div class="mb-6 text-center">
-                <button id="create-new-set" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600 transition">Create New Set</button>
+                <button id="create-new-set" class="bg-green-500 dark:bg-green-600 text-white px-6 py-2 rounded hover:bg-green-600 dark:hover:bg-green-700 transition">Create New Set</button>
             </div>
             <div id="sets-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
@@ -305,21 +324,21 @@ function renderSetsPage() {
     container.innerHTML = '';
 
     if (sets.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center text-gray-500 py-8">No sets created yet. Create your first set!</div>`;
+        container.innerHTML = `<div class="col-span-full text-center text-gray-500 dark:text-gray-400 py-8">No sets created yet. Create your first set!</div>`;
     } else {
         sets.forEach((set) => {
             const setDiv = document.createElement('div');
-            setDiv.className = "set-card bg-white border rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow";
+            setDiv.className = "set-card bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow";
             setDiv.dataset.setId = set.id;
             setDiv.innerHTML = `
                 <div class="flex justify-between items-start mb-4">
-                    <h3 class="text-lg font-semibold text-blue-700">${set.name}</h3>
+                    <h3 class="text-lg font-semibold text-blue-700 dark:text-blue-300">${set.name}</h3>
                     <div class="flex flex-col space-y-1">
-                        <button class="rename-set text-blue-500 hover:text-blue-700 text-sm" data-set-id="${set.id}" data-set-name="${set.name}">Rename</button>
-                        <button class="delete-set text-red-500 hover:text-red-700 text-sm" data-set-id="${set.id}" data-set-name="${set.name}">Delete</button>
+                        <button class="rename-set text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm" data-set-id="${set.id}" data-set-name="${set.name}">Rename</button>
+                        <button class="delete-set text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm" data-set-id="${set.id}" data-set-name="${set.name}">Delete</button>
                     </div>
                 </div>
-                <div class="text-gray-600">
+                <div class="text-gray-600 dark:text-gray-400">
                     <p>${set.cards.length} card${set.cards.length !== 1 ? 's' : ''}</p>
                     <p class="text-sm mt-2">Click to edit</p>
                 </div>
@@ -338,7 +357,7 @@ function renderUserPage() {
         renderSetsPage();
     } else if (page === "quiz") {
         const currentSetId = getCurrentSetId();
-        if (currentSetId) { startQuiz(currentSetId);  }
+        if (currentSetId) { startQuiz(currentSetId); }
     } else {
         // Default to home page if no valid page is found
         renderHomePage();
@@ -362,28 +381,28 @@ function recreateForm() {
             const container = document.getElementById('answers-container');
             container.innerHTML = `
                 <div class="answer-input flex space-x-2">
-                    <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded" required>
-                    <button type="button" class="remove-answer text-red-500 hover:underline" style="display:none;">Remove</button>
+                    <input type="text" placeholder="Answer 1" class="answer-field flex-1 min-w-64 px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" required>
+                    <button type="button" class="remove-answer text-red-500 dark:text-red-400 hover:underline" style="display:none;">Remove</button>
                 </div>
             `;
         }
     });
 
     // Handle add answer button
-    document.getElementById('add-answer').addEventListener('click', function() {
+    document.getElementById('add-answer').addEventListener('click', function () {
         const container = document.getElementById('answers-container');
         const count = container.querySelectorAll('.answer-input').length + 1;
         const div = document.createElement('div');
         div.className = 'answer-input flex space-x-2';
         div.innerHTML = `
-            <input type="text" placeholder="Answer ${count}" class="answer-field flex-1 min-w-64 px-3 py-2 border rounded">
-            <button type="button" class="remove-answer text-red-500 hover:underline">Remove</button>
+            <input type="text" placeholder="Answer ${count}" class="answer-field flex-1 min-w-64 px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded">
+            <button type="button" class="remove-answer text-red-500 dark:text-red-400 hover:underline">Remove</button>
         `;
         container.appendChild(div);
     });
 
     // Handle remove answer buttons (event delegation)
-    document.getElementById('answers-container').addEventListener('click', function(e) {
+    document.getElementById('answers-container').addEventListener('click', function (e) {
         if (e.target.classList.contains('remove-answer')) {
             e.target.closest('.answer-input').remove();
         }
@@ -404,22 +423,22 @@ function renderFlashcards() {
     container.innerHTML = '';
 
     if (currentSet.cards.length === 0) {
-        container.innerHTML = `<div class="text-center text-gray-500 py-4">No cards in this set yet. Add your first card above!</div>`;
+        container.innerHTML = `<div class="text-center text-gray-500 dark:text-gray-400 py-4">No cards in this set yet. Add your first card above!</div>`;
         return;
     }
 
     currentSet.cards.forEach((card, idx) => {
         const cardDiv = document.createElement('div');
-        cardDiv.className = "bg-gray-50 border rounded p-4 flex justify-between items-center";
+        cardDiv.className = "bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 rounded p-4 flex justify-between items-center";
         const answersHtml = card.answers.map(ans => escapeHtml(ans)).join('<br>');
         cardDiv.innerHTML = `
             <div>
-                <div class="font-semibold">${escapeHtml(card.question)}</div>
-                <div class="text-gray-600 hidden" id="answer-${idx}">${answersHtml}</div>
+                <div class="font-semibold text-gray-900 dark:text-white">${escapeHtml(card.question)}</div>
+                <div class="text-gray-600 dark:text-gray-300 hidden" id="answer-${idx}">${answersHtml}</div>
             </div>
             <div class="flex space-x-2">
-                <button class="text-blue-500 hover:underline" onclick="document.getElementById('answer-${idx}').classList.toggle('hidden')">Show</button>
-                <button class="text-red-500 hover:underline" onclick="deleteCardFromCurrentSet(${idx})">Delete</button>
+                <button class="text-blue-500 dark:text-blue-400 hover:underline" onclick="document.getElementById('answer-${idx}').classList.toggle('hidden')">Show</button>
+                <button class="text-red-500 dark:text-red-400 hover:underline" onclick="deleteCardFromCurrentSet(${idx})">Delete</button>
             </div>
         `;
         container.appendChild(cardDiv);
@@ -487,29 +506,29 @@ function renderQuiz() {
     const progress = `${quizState.idx + 1} / ${quizState.order.length}`;
 
     document.getElementById('main').innerHTML = `
-    <div class="max-w-2xl mx-auto p-6 bg-white rounded shadow">
+    <div class="max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded shadow">
       <div class="flex justify-between items-center mb-4">
-        <h2 class="text-xl font-bold">Quiz: ${escapeHtml(set.name)}</h2>
-        <div class="text-sm text-gray-500">${progress}</div>
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Quiz: ${escapeHtml(set.name)}</h2>
+        <div class="text-sm text-gray-500 dark:text-gray-400">${progress}</div>
       </div>
 
       <div id="quiz-question" class="mb-4">
-        <div class="text-lg font-semibold mb-2">Question</div>
-        <div class="mb-4">${escapeHtml(card.question)}</div>
+        <div class="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Question</div>
+        <div class="mb-4 text-gray-900 dark:text-white">${escapeHtml(card.question)}</div>
       </div>
 
       <form id="quiz-form" class="mb-2">
-        <input id="quiz-answer" autocomplete="off" class="w-full px-3 py-2 border rounded" placeholder="Type your answer" />
+        <input id="quiz-answer" autocomplete="off" class="w-full px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" placeholder="Type your answer" />
         <div class="flex gap-2 mt-3">
-          <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">Submit</button>
-          <button type="button" id="show-answer" class="bg-gray-200 px-4 py-2 rounded">Show answer</button>
+          <button type="submit" class="bg-blue-500 dark:bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600 dark:hover:bg-blue-700">Submit</button>
+          <button type="button" id="show-answer" class="bg-gray-200 dark:bg-gray-600 px-4 py-2 rounded">Show answer</button>
         </div>
       </form>
 
       <div id="quiz-feedback" class="mt-4"></div>
 
       <div class="mt-4 flex justify-between">
-        <button id="quiz-back" class="text-blue-500 hover:underline">Back to Set</button>
+        <button id="quiz-back" class="text-blue-500 dark:text-blue-400 hover:underline">Back to Set</button>
         <div id="quiz-progress"></div>
       </div>
     </div>
@@ -555,10 +574,10 @@ function submitAnswer() {
     // show feedback and next button
     const fb = document.getElementById('quiz-feedback');
     if (correct) {
-        fb.innerHTML = `<div class="text-green-600 font-semibold">Correct!</div>`;
+        fb.innerHTML = `<div class="text-green-600 dark:text-green-400 font-semibold">Correct!</div>`;
     } else {
-        fb.innerHTML = `<div class="text-red-600 font-semibold">Incorrect.</div>
-                    <div class="text-sm mt-1">Answer(s): <strong>${card.answers.map(ans => escapeHtml(ans)).join(', ')}</strong></div>`;
+        fb.innerHTML = `<div class="text-red-600 dark:text-red-400 font-semibold">Incorrect.</div>
+                    <div class="text-sm mt-1 text-gray-900 dark:text-white">Answer(s): <strong>${card.answers.map(ans => escapeHtml(ans)).join(', ')}</strong></div>`;
     }
 
     // disable input and show Next or Finish button
@@ -592,12 +611,12 @@ function endQuiz() {
 
     // optionally persist last result: localStorage.setItem('lastQuiz', JSON.stringify({...}))
     document.getElementById('main').innerHTML = `
-    <div class="max-w-md mx-auto p-6 bg-white rounded shadow text-center">
-      <h2 class="text-2xl font-bold mb-4">Quiz Complete</h2>
-      <p class="text-lg mb-4">You scored ${score} / ${total}</p>
+    <div class="max-w-md mx-auto p-6 bg-white dark:bg-gray-800 rounded shadow text-center">
+      <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Quiz Complete</h2>
+      <p class="text-lg mb-4 text-gray-900 dark:text-white">You scored ${score} / ${total}</p>
       <div class="flex justify-center gap-3">
-        <button id="quiz-retry" class="bg-green-500 text-white px-4 py-2 rounded">Retry</button>
-        <button id="quiz-back-to-set" class="bg-gray-200 px-4 py-2 rounded">Back to Set</button>
+        <button id="quiz-retry" class="bg-green-500 dark:bg-green-600 text-white px-4 py-2 rounded hover:bg-green-600 dark:hover:bg-green-700">Retry</button>
+        <button id="quiz-back-to-set" class="bg-gray-200 dark:bg-gray-600 px-4 py-2 rounded">Back to Set</button>
       </div>
     </div>
   `;
@@ -630,7 +649,33 @@ function updateQuizProgress() {
     p.textContent = `Score: ${quizState.score}, Q: ${quizState.idx + 1}/${quizState.order.length}`;
 }
 
+// Dark mode toggle
+function initDarkMode() {
+
+    const toggleButton = document.getElementById('dark-mode-toggle');
+    if (!toggleButton) return; // Safety check
+
+    // Check localStorage for saved preference and apply on load
+    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        toggleButton.textContent = '☀️'; // Sun icon for light mode
+    } else {
+        toggleButton.textContent = '🌙'; // Moon icon for dark mode
+    }
+
+    // Toggle button click handler
+    toggleButton.addEventListener('click', () => {
+        const html = document.documentElement;
+        const isDark = html.classList.toggle('dark'); // Toggle the 'dark' class on <html>
+        localStorage.setItem('darkMode', isDark); // Save preference
+        toggleButton.textContent = isDark ? '☀️' : '🌙'; // Update icon
+    });
+
+}
+
 //#endregion
 
 // Initial render
+initDarkMode();
 renderUserPage();
