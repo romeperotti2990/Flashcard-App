@@ -1,4 +1,127 @@
-//#region Setup
+// Storage utilities
+const storage = {
+    // Cache for parsed data
+    _setsCache: null,
+    _setsCacheKey: null,
+
+    // Page management
+    getPage: () => localStorage.getItem("page") || "home",
+    setPage: (pageName) => {
+        page = pageName;
+        localStorage.setItem("page", page);
+    },
+
+    // Sets management with caching
+    getSets: () => {
+        const currentData = localStorage.getItem('cardSets');
+        const cacheKey = currentData ? currentData.length + '_' + currentData.slice(0, 50) : 'empty';
+
+        // Return cached data if available and not stale
+        if (storage._setsCache && storage._setsCacheKey === cacheKey) {
+            return storage._setsCache;
+        }
+
+        let sets = JSON.parse(currentData || '[]');
+
+        // Migrate old cards with single answer to answers array
+        sets.forEach(set => {
+            set.cards.forEach(card => {
+                if (typeof card.answer === 'string') {
+                    card.answers = [card.answer];
+                    delete card.answer;
+                }
+            });
+        });
+
+        // Cache the parsed and migrated data
+        storage._setsCache = sets;
+        storage._setsCacheKey = cacheKey;
+
+        // Save migrated data back to localStorage if migration occurred
+        if (currentData !== JSON.stringify(sets)) {
+            localStorage.setItem('cardSets', JSON.stringify(sets));
+        }
+
+        return sets;
+    },
+    saveSets: (sets) => {
+        const dataString = JSON.stringify(sets);
+        localStorage.setItem('cardSets', dataString);
+        // Update cache
+        storage._setsCache = sets;
+        storage._setsCacheKey = dataString.length + '_' + dataString.slice(0, 50);
+    },
+
+    // Current set management
+    getCurrentSetId: () => localStorage.getItem('currentSetId') || null,
+    setCurrentSetId: (setId) => localStorage.setItem('currentSetId', setId),
+
+    // Dark mode
+    getDarkMode: () => localStorage.getItem('darkMode') === 'true',
+    setDarkMode: (isDark) => localStorage.setItem('darkMode', isDark)
+};
+
+// Set management functions
+const sets = {
+    create: (setName) => {
+        const allSets = storage.getSets();
+        const newSet = {
+            id: Date.now().toString(), // Simple ID generation
+            name: setName,
+            cards: []
+        };
+        allSets.push(newSet);
+        storage.saveSets(allSets);
+        return newSet.id;
+    },
+
+    getById: (setId) => {
+        const allSets = storage.getSets();
+        return allSets.find(set => set.id === setId) || null;
+    },
+
+    rename: (setId, newName) => {
+        const allSets = storage.getSets();
+        const setIndex = allSets.findIndex(set => set.id === setId);
+        if (setIndex !== -1) {
+            allSets[setIndex].name = newName;
+            storage.saveSets(allSets);
+            return true;
+        }
+        return false;
+    },
+
+    delete: (setId) => {
+        const allSets = storage.getSets();
+        const filteredSets = allSets.filter(set => set.id !== setId);
+        storage.saveSets(filteredSets);
+    }
+};
+
+// Card management functions
+const cards = {
+    addToSet: (setId, question, answers) => {
+        const allSets = storage.getSets();
+        const setIndex = allSets.findIndex(set => set.id === setId);
+        if (setIndex !== -1) {
+            allSets[setIndex].cards.push({ question, answers });
+            storage.saveSets(allSets);
+            return true;
+        }
+        return false;
+    },
+
+    deleteFromSet: (setId, cardIndex) => {
+        const allSets = storage.getSets();
+        const setIndex = allSets.findIndex(set => set.id === setId);
+        if (setIndex !== -1 && allSets[setIndex].cards[cardIndex]) {
+            allSets[setIndex].cards.splice(cardIndex, 1);
+            storage.saveSets(allSets);
+            return true;
+        }
+        return false;
+    }
+};
 
 // Use event delegation to handle clicks on dynamically created elements
 document.addEventListener('click', e => {
@@ -7,28 +130,28 @@ document.addEventListener('click', e => {
     const action = actionEl && actionEl.dataset && (actionEl.dataset.action || actionEl.id);
 
     const go = (pageName, setId = null) => {
-        if (setId) setCurrentSetId(setId);
-        updateUserPage(pageName);
-        renderUserPage();
+        if (setId) storage.setCurrentSetId(setId);
+        storage.setPage(pageName);
+        renderPage();
     };
 
     const createSetFlow = () => {
         const name = prompt('Enter a name for your new set:');
         if (name && name.trim()) {
-            setCurrentSetId(createNewSet(name.trim()));
+            storage.setCurrentSetId(sets.create(name.trim()));
             go('create');
         }
     };
 
     // Action handlers map
     const handlers = {
-        quiz: () => { const id = getCurrentSetId(); if (id) startQuiz(id); },
+        quiz: () => { const id = storage.getCurrentSetId(); if (id) startQuiz(id); },
         home: () => go('home'),
         'get-started': () => {
-            const sets = getSets();
-            if (!sets.length) {
+            const allSets = storage.getSets();
+            if (!allSets.length) {
                 const name = prompt('Enter a name for your first set:');
-                if (name && name.trim()) { setCurrentSetId(createNewSet(name.trim())); go('create'); }
+                if (name && name.trim()) { storage.setCurrentSetId(sets.create(name.trim())); go('create'); }
             } else go('sets');
         },
         create: createSetFlow,
@@ -49,7 +172,7 @@ document.addEventListener('click', e => {
         e.stopPropagation();
         const id = renameBtn.dataset.setId, cur = renameBtn.dataset.setName || '';
         const n = prompt('Enter new name for the set:', cur);
-        if (n && n.trim() && n.trim() !== cur) { renameSet(id, n.trim()); renderSetsPage(); }
+        if (n && n.trim() && n.trim() !== cur) { sets.rename(id, n.trim()); page = "sets"; renderPage(); }
         return;
     }
 
@@ -57,172 +180,42 @@ document.addEventListener('click', e => {
     if (deleteBtn) {
         e.stopPropagation();
         const id = deleteBtn.dataset.setId, nm = deleteBtn.dataset.setName || '';
-        if (confirm(`Are you sure you want to delete the set "${nm}"?`)) { deleteSet(id); renderSetsPage(); }
+        if (confirm(`Are you sure you want to delete the set "${nm}"?`)) { sets.delete(id); page = "sets"; renderPage(); }
         return;
     }
 
     // Clicking a set card opens it
     const card = el.closest && el.closest('.set-card');
     if (card) {
-        setCurrentSetId(card.dataset.setId);
+        storage.setCurrentSetId(card.dataset.setId);
         go('create');
     }
 });
 
-let page = localStorage.getItem("page") || "home";
+let page = storage.getPage();
 
 // quizState holds the active quiz
 let quizState = null;
 
-//#endregion
-
-//#region Classes
-
-class CardSet {
-    constructor(name) {
-        this.name = name;
-        this.cards = [];
-    }
-
-    addCard(question, answer) {
-        this.cards.push({ question, answer });
-    }
-
-    removeCard(index) {
-        this.cards.splice(index, 1);
-    }
-
-    getCards() {
-        return this.cards;
-    }
-}
-
-//#endregion
-
-//#region Functions
 // If there is no comment before a function, just read the name of the function. I asume you are not stupid.
 
 // sets localstorage for what page the user was last on.
-function updateUserPage(pageName) {
-    page = pageName;
-    localStorage.setItem("page", page);
-}
-
-// Load flashcards from localStorage
-function getFlashcards() {
-    return JSON.parse(localStorage.getItem('flashcards') || '[]');
-}
-
-//set flashcards to local storage
-function saveFlashcards(flashcards) {
-    localStorage.setItem('flashcards', JSON.stringify(flashcards));
-}
-
-// Load sets from localStorage
-function getSets() {
-    let sets = JSON.parse(localStorage.getItem('cardSets') || '[]');
-    // Migrate old cards with single answer to answers array
-    sets.forEach(set => {
-        set.cards.forEach(card => {
-            if (typeof card.answer === 'string') {
-                card.answers = [card.answer];
-                delete card.answer;
-            }
-        });
-    });
-    // Save migrated data
-    localStorage.setItem('cardSets', JSON.stringify(sets));
-    return sets;
-}
-
-// Save sets to localStorage
-function saveSets(sets) {
-    localStorage.setItem('cardSets', JSON.stringify(sets));
-}
-
-// Get current active set ID
-function getCurrentSetId() {
-    return localStorage.getItem('currentSetId') || null;
-}
-
-// Set current active set ID
-function setCurrentSetId(setId) {
-    localStorage.setItem('currentSetId', setId);
-}
-
+// Storage utilities
 // Create a new set
-function createNewSet(setName) {
-    const sets = getSets();
-    const newSet = {
-        id: Date.now().toString(), // Simple ID generation
-        name: setName,
-        cards: []
-    };
-    sets.push(newSet);
-    saveSets(sets);
-    return newSet.id;
-}
-
-// Get a specific set by ID
-function getSetById(setId) {
-    const sets = getSets();
-    return sets.find(set => set.id === setId) || null;
-}
-
-// Add card to specific set
-function addCardToSet(setId, question, answers) {
-    const sets = getSets();
-    const setIndex = sets.findIndex(set => set.id === setId);
-    if (setIndex !== -1) {
-        sets[setIndex].cards.push({ question, answers });
-        saveSets(sets);
-        return true;
-    }
-    return false;
-}
-
-// Delete card from specific set
-function deleteCardFromSet(setId, cardIndex) {
-    const sets = getSets();
-    const setIndex = sets.findIndex(set => set.id === setId);
-    if (setIndex !== -1 && sets[setIndex].cards[cardIndex]) {
-        sets[setIndex].cards.splice(cardIndex, 1);
-        saveSets(sets);
-        return true;
-    }
-    return false;
-}
-
-// Rename a set
-function renameSet(setId, newName) {
-    const sets = getSets();
-    const setIndex = sets.findIndex(set => set.id === setId);
-    if (setIndex !== -1) {
-        sets[setIndex].name = newName;
-        saveSets(sets);
-        return true;
-    }
-    return false;
-}
-
-// Delete entire set
-function deleteSet(setId) {
-    const sets = getSets();
-    const filteredSets = sets.filter(set => set.id !== setId);
-    saveSets(filteredSets);
-}
-
+// Set management functions
+// Card management functions
 // Delete card from current set (adds the event listener)
 function deleteCardFromCurrentSet(cardIndex) {
-    const currentSetId = getCurrentSetId();
+    const currentSetId = storage.getCurrentSetId();
     if (currentSetId) {
-        deleteCardFromSet(currentSetId, cardIndex);
+        cards.deleteFromSet(currentSetId, cardIndex);
         renderFlashcards();
     }
 }
 
-function renderHomePage() {
-    document.getElementById("main").innerHTML = `
+function renderPage() {
+    if (page === "home") {
+        document.getElementById("main").innerHTML = `
     <div class="flex flex-col items-center justify-center min-h-[60vh] w-full">
        <h1 class="text-3xl font-bold mb-4 text-blue-700 dark:text-blue-300">Welcome to 'Flashcard App!'</h1>
        <p class="mb-6 text-gray-700 dark:text-gray-300">
@@ -245,21 +238,19 @@ function renderHomePage() {
     document.getElementById("home").className = "underline";
     document.getElementById("create").className = "hover:underline";
     document.getElementById("sets").className = "hover:underline";
+    storage.setPage("home");
+    } else if (page === "create") {
+        const currentSetId = storage.getCurrentSetId();
+        const currentSet = currentSetId ? sets.getById(currentSetId) : null;
 
-    updateUserPage("home");
-}
+        if (!currentSet) {
+            // No set selected, redirect to sets page
+            page = "sets";
+            renderPage();
+            return;
+        }
 
-function renderCreatePage() {
-    const currentSetId = getCurrentSetId();
-    const currentSet = currentSetId ? getSetById(currentSetId) : null;
-
-    if (!currentSet) {
-        // No set selected, redirect to sets page
-        renderSetsPage();
-        return;
-    }
-
-    document.getElementById("main").innerHTML = `
+        document.getElementById("main").innerHTML = `
     <div class="w-full px-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 w-full">
             <div class="flex justify-between items-center mb-4 ">
@@ -290,20 +281,19 @@ function renderCreatePage() {
 
     // Add back button functionality
     document.getElementById('back-to-sets').addEventListener('click', () => {
-        setCurrentSetId(null);
-        renderSetsPage();
+        storage.setCurrentSetId(null);
+        page = "sets";
+        renderPage();
     });
 
     recreateForm();
 
-    updateUserPage("create");
+    storage.setPage("create");
 
     // Render existing flashcards
     renderFlashcards();
-}
-
-function renderSetsPage() {
-    document.getElementById("main").innerHTML = `
+    } else if (page === "sets") {
+        document.getElementById("main").innerHTML = `
         <div class="w-full max-w-4xl">
             <h1 class="text-2xl font-bold mb-4 text-center text-blue-700 dark:text-blue-300">My Flashcard Sets</h1>
             <div class="mb-6 text-center">
@@ -316,17 +306,17 @@ function renderSetsPage() {
     document.getElementById("create").className = "hover:underline";
     document.getElementById("sets").className = "underline";
 
-    updateUserPage("sets");
+    storage.setPage("sets");
 
     // Render all sets
-    const sets = getSets();
+    const allSets = storage.getSets();
     const container = document.getElementById('sets-container');
     container.innerHTML = '';
 
-    if (sets.length === 0) {
+    if (allSets.length === 0) {
         container.innerHTML = `<div class="col-span-full text-center text-gray-500 dark:text-gray-400 py-8">No sets created yet. Create your first set!</div>`;
     } else {
-        sets.forEach((set) => {
+        allSets.forEach((set) => {
             const setDiv = document.createElement('div');
             setDiv.className = "set-card bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow";
             setDiv.dataset.setId = set.id;
@@ -346,21 +336,12 @@ function renderSetsPage() {
             container.appendChild(setDiv);
         });
     }
-}
-
-function renderUserPage() {
-    if (page === "home") {
-        renderHomePage();
-    } else if (page === "create") {
-        renderCreatePage();
-    } else if (page === "sets") {
-        renderSetsPage();
     } else if (page === "quiz") {
         const currentSetId = getCurrentSetId();
         if (currentSetId) { startQuiz(currentSetId); }
     } else {
         // Default to home page if no valid page is found
-        renderHomePage();
+        renderPage("home");
     }
 }
 
@@ -371,10 +352,10 @@ function recreateForm() {
         const question = document.getElementById('question').value.trim();
         const answerInputs = document.querySelectorAll('.answer-field');
         const answers = Array.from(answerInputs).map(input => input.value.trim()).filter(ans => ans);
-        const currentSetId = getCurrentSetId();
+        const currentSetId = storage.getCurrentSetId();
 
         if (question && answers.length > 0 && currentSetId) {
-            addCardToSet(currentSetId, question, answers);
+            cards.addToSet(currentSetId, question, answers);
             renderFlashcards();
             this.reset();
             // Reset to single answer input
@@ -411,10 +392,10 @@ function recreateForm() {
 
 // make the cards
 function renderFlashcards() {
-    const currentSetId = getCurrentSetId();
+    const currentSetId = storage.getCurrentSetId();
     if (!currentSetId) return;
 
-    const currentSet = getSetById(currentSetId);
+    const currentSet = sets.getById(currentSetId);
     if (!currentSet) return;
 
     const container = document.getElementById('flashcards');
@@ -445,21 +426,6 @@ function renderFlashcards() {
     });
 }
 
-function getFlashcards() {
-    const currentSetId = getCurrentSetId();
-    if (!currentSetId) return [];
-    const currentSet = getSetById(currentSetId);
-    return currentSet ? currentSet.cards : [];
-}
-
-// Legacy function - kept for compatibility but should use deleteCardFromCurrentSet instead
-function deleteFlashcard(idx) {
-    const flashcards = getFlashcards();
-    flashcards.splice(idx, 1);
-    saveFlashcards(flashcards);
-    renderFlashcards();
-}
-
 // Simple shuffle (Fisher–Yates)
 function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -471,8 +437,8 @@ function shuffle(array) {
 
 // Start a quiz for a set id
 function startQuiz(setId) {
-    updateUserPage("quiz");
-    const set = getSetById(setId);
+    storage.setPage("quiz");
+    const set = sets.getById(setId);
     if (!set) {
         alert('Set not found.');
         return;
@@ -498,7 +464,7 @@ function startQuiz(setId) {
 // Render current quiz question
 function renderQuiz() {
     if (!quizState) return;
-    const set = getSetById(quizState.setId);
+    const set = sets.getById(quizState.setId);
     if (!set) return;
 
     const cardIndex = quizState.order[quizState.idx];
@@ -547,9 +513,10 @@ function renderQuiz() {
     });
 
     document.getElementById('quiz-back').addEventListener('click', function () {
-        setCurrentSetId(quizState.setId);
+        storage.setCurrentSetId(quizState.setId);
         quizState = null;
-        renderCreatePage(); // go back to editing/viewing that set (use your existing function)
+        page = "create";
+        renderPage(); // go back to editing/viewing that set
     });
 
     updateQuizProgress();
@@ -558,7 +525,7 @@ function renderQuiz() {
 // Submit the user's answer for current question
 function submitAnswer() {
     if (!quizState) return;
-    const set = getSetById(quizState.setId);
+    const set = sets.getById(quizState.setId);
     const cardIndex = quizState.order[quizState.idx];
     const card = set.cards[cardIndex];
 
@@ -605,7 +572,7 @@ function submitAnswer() {
 // End quiz and show summary
 function endQuiz() {
     if (!quizState) return;
-    const set = getSetById(quizState.setId);
+    const set = sets.getById(quizState.setId);
     const total = quizState.order.length;
     const score = quizState.score;
 
@@ -626,9 +593,10 @@ function endQuiz() {
         startQuiz(quizState.setId);
     });
     document.getElementById('quiz-back-to-set').addEventListener('click', () => {
-        setCurrentSetId(quizState.setId);
+        storage.setCurrentSetId(quizState.setId);
         quizState = null;
-        renderCreatePage();
+        page = "create";
+        renderPage();
     });
 }
 
@@ -656,7 +624,7 @@ function initDarkMode() {
     if (!toggleButton) return; // Safety check
 
     // Check localStorage for saved preference and apply on load
-    const isDarkMode = localStorage.getItem('darkMode') === 'true';
+    const isDarkMode = storage.getDarkMode();
     if (isDarkMode) {
         document.documentElement.classList.add('dark');
         toggleButton.textContent = '☀️'; // Sun icon for light mode
@@ -668,14 +636,12 @@ function initDarkMode() {
     toggleButton.addEventListener('click', () => {
         const html = document.documentElement;
         const isDark = html.classList.toggle('dark'); // Toggle the 'dark' class on <html>
-        localStorage.setItem('darkMode', isDark); // Save preference
+        storage.setDarkMode(isDark); // Save preference
         toggleButton.textContent = isDark ? '☀️' : '🌙'; // Update icon
     });
 
 }
 
-//#endregion
-
 // Initial render
 initDarkMode();
-renderUserPage();
+renderPage();
