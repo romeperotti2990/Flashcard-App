@@ -1,9 +1,5 @@
 // Storage utilities
 const storage = {
-    // Cache for parsed data
-    _setsCache: null,
-    _setsCacheKey: null,
-
     // Page management
     getPage: () => localStorage.getItem("page") || "home",
     setPage: (pageName) => {
@@ -11,18 +7,9 @@ const storage = {
         localStorage.setItem("page", page);
     },
 
-    // Sets management with caching
+    // Sets management
     getSets: () => {
-        const currentData = localStorage.getItem('cardSets');
-        const cacheKey = currentData ? currentData.length + '_' + currentData.slice(0, 50) : 'empty';
-
-        // Return cached data if available and not stale
-        if (storage._setsCache && storage._setsCacheKey === cacheKey) {
-            return storage._setsCache;
-        }
-
-        let sets = JSON.parse(currentData || '[]');
-
+        let sets = JSON.parse(localStorage.getItem('cardSets') || '[]');
         // Migrate old cards with single answer to answers array
         sets.forEach(set => {
             set.cards.forEach(card => {
@@ -32,25 +19,11 @@ const storage = {
                 }
             });
         });
-
-        // Cache the parsed and migrated data
-        storage._setsCache = sets;
-        storage._setsCacheKey = cacheKey;
-
-        // Save migrated data back to localStorage if migration occurred
-        if (currentData !== JSON.stringify(sets)) {
-            localStorage.setItem('cardSets', JSON.stringify(sets));
-        }
-
+        // Save migrated data
+        localStorage.setItem('cardSets', JSON.stringify(sets));
         return sets;
     },
-    saveSets: (sets) => {
-        const dataString = JSON.stringify(sets);
-        localStorage.setItem('cardSets', dataString);
-        // Update cache
-        storage._setsCache = sets;
-        storage._setsCacheKey = dataString.length + '_' + dataString.slice(0, 50);
-    },
+    saveSets: (sets) => localStorage.setItem('cardSets', JSON.stringify(sets)),
 
     // Current set management
     getCurrentSetId: () => localStorage.getItem('currentSetId') || null,
@@ -197,13 +170,14 @@ let page = storage.getPage();
 // quizState holds the active quiz
 let quizState = null;
 
+// Restore quiz state if it exists
+const savedQuizState = localStorage.getItem('quizState');
+if (savedQuizState) {
+    quizState = JSON.parse(savedQuizState);
+}
+
 // If there is no comment before a function, just read the name of the function. I asume you are not stupid.
 
-// sets localstorage for what page the user was last on.
-// Storage utilities
-// Create a new set
-// Set management functions
-// Card management functions
 // Delete card from current set (adds the event listener)
 function deleteCardFromCurrentSet(cardIndex) {
     const currentSetId = storage.getCurrentSetId();
@@ -235,16 +209,16 @@ function renderPage() {
        </p>
     </div>
     `;
-    document.getElementById("home").className = "underline";
-    document.getElementById("create").className = "hover:underline";
-    document.getElementById("sets").className = "hover:underline";
-    storage.setPage("home");
+        document.getElementById("home").className = "underline";
+        document.getElementById("create").className = "hover:underline";
+        document.getElementById("sets").className = "hover:underline";
+        storage.setPage("home");
     } else if (page === "create") {
         const currentSetId = storage.getCurrentSetId();
         const currentSet = currentSetId ? sets.getById(currentSetId) : null;
 
         if (!currentSet) {
-            // No set selected, redirect to sets page
+            // If no set selected, redirect to sets page
             page = "sets";
             renderPage();
             return;
@@ -275,23 +249,23 @@ function renderPage() {
         </div>
     </div>
     `;
-    document.getElementById("home").className = "hover:underline";
-    document.getElementById("create").className = "underline";
-    document.getElementById("sets").className = "hover:underline";
+        document.getElementById("home").className = "hover:underline";
+        document.getElementById("create").className = "underline";
+        document.getElementById("sets").className = "hover:underline";
 
-    // Add back button functionality
-    document.getElementById('back-to-sets').addEventListener('click', () => {
-        storage.setCurrentSetId(null);
-        page = "sets";
-        renderPage();
-    });
+        // Back button
+        document.getElementById('back-to-sets').addEventListener('click', () => {
+            storage.setCurrentSetId(null);
+            page = "sets";
+            renderPage();
+        });
 
-    recreateForm();
+        recreateForm();
 
-    storage.setPage("create");
+        storage.setPage("create");
 
-    // Render existing flashcards
-    renderFlashcards();
+        // Render existing flashcards
+        renderFlashcards();
     } else if (page === "sets") {
         document.getElementById("main").innerHTML = `
         <div class="w-full max-w-4xl">
@@ -302,25 +276,25 @@ function renderPage() {
             <div id="sets-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
     `;
-    document.getElementById("home").className = "hover:underline";
-    document.getElementById("create").className = "hover:underline";
-    document.getElementById("sets").className = "underline";
+        document.getElementById("home").className = "hover:underline";
+        document.getElementById("create").className = "hover:underline";
+        document.getElementById("sets").className = "underline";
 
-    storage.setPage("sets");
+        storage.setPage("sets");
 
-    // Render all sets
-    const allSets = storage.getSets();
-    const container = document.getElementById('sets-container');
-    container.innerHTML = '';
+        // Render all sets
+        const allSets = storage.getSets();
+        const container = document.getElementById('sets-container');
+        container.innerHTML = '';
 
-    if (allSets.length === 0) {
-        container.innerHTML = `<div class="col-span-full text-center text-gray-500 dark:text-gray-400 py-8">No sets created yet. Create your first set!</div>`;
-    } else {
-        allSets.forEach((set) => {
-            const setDiv = document.createElement('div');
-            setDiv.className = "set-card bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow";
-            setDiv.dataset.setId = set.id;
-            setDiv.innerHTML = `
+        if (allSets.length === 0) {
+            container.innerHTML = `<div class="col-span-full text-center text-gray-500 dark:text-gray-400 py-8">No sets created yet. Create your first set!</div>`;
+        } else {
+            allSets.forEach((set) => {
+                const setDiv = document.createElement('div');
+                setDiv.className = "set-card bg-white dark:bg-gray-800 border dark:border-gray-600 rounded-lg p-6 cursor-pointer hover:shadow-lg transition-shadow";
+                setDiv.dataset.setId = set.id;
+                setDiv.innerHTML = `
                 <div class="flex justify-between items-start mb-4">
                     <h3 class="text-lg font-semibold text-blue-700 dark:text-blue-300">${set.name}</h3>
                     <div class="flex flex-col space-y-1">
@@ -333,12 +307,17 @@ function renderPage() {
                     <p class="text-sm mt-2">Click to edit</p>
                 </div>
             `;
-            container.appendChild(setDiv);
-        });
-    }
+                container.appendChild(setDiv);
+            });
+        }
     } else if (page === "quiz") {
-        const currentSetId = getCurrentSetId();
-        if (currentSetId) { startQuiz(currentSetId); }
+        if (quizState) {
+            renderQuiz(); // Resume existing quiz
+        } else {
+            // No quiz state, redirect to sets
+            page = "sets";
+            renderPage();
+        }
     } else {
         // Default to home page if no valid page is found
         renderPage("home");
@@ -458,6 +437,9 @@ function startQuiz(setId) {
         answers: []    // optionally store results
     };
 
+    // Save quiz state to localStorage
+    localStorage.setItem('quizState', JSON.stringify(quizState));
+
     renderQuiz(); // render the quiz UI into #main
 }
 
@@ -487,15 +469,15 @@ function renderQuiz() {
         <input id="quiz-answer" autocomplete="off" class="w-full px-3 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded" placeholder="Type your answer" />
         <div class="flex gap-2 mt-3">
           <button type="submit" class="bg-blue-500 dark:bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600 dark:hover:bg-blue-700">Submit</button>
-          <button type="button" id="show-answer" class="bg-gray-200 dark:bg-gray-600 px-4 py-2 rounded">Show answer</button>
+          <button type="button" id="show-answer" class="bg-gray-200 dark:bg-gray-400 px-4 py-2 rounded">Show answer</button>
         </div>
       </form>
 
-      <div id="quiz-feedback" class="mt-4"></div>
+      <div id="quiz-feedback" class="text-gray-600 dark:text-gray-200 mt-4"></div>
 
       <div class="mt-4 flex justify-between">
         <button id="quiz-back" class="text-blue-500 dark:text-blue-400 hover:underline">Back to Set</button>
-        <div id="quiz-progress"></div>
+        <div id="quiz-progress" class="text-black dark:text-white"></div>
       </div>
     </div>
   `;
@@ -538,6 +520,9 @@ function submitAnswer() {
     quizState.answers.push({ idx: cardIndex, user, correct });
     if (correct) quizState.score++;
 
+    // Save updated quiz state
+    localStorage.setItem('quizState', JSON.stringify(quizState));
+
     // show feedback and next button
     const fb = document.getElementById('quiz-feedback');
     if (correct) {
@@ -572,11 +557,15 @@ function submitAnswer() {
 // End quiz and show summary
 function endQuiz() {
     if (!quizState) return;
-    const set = sets.getById(quizState.setId);
+    const setId = quizState.setId;  // Save the set ID before clearing
+    const set = sets.getById(setId);
     const total = quizState.order.length;
     const score = quizState.score;
 
-    // optionally persist last result: localStorage.setItem('lastQuiz', JSON.stringify({...}))
+    // Clear quiz state from localStorage
+    localStorage.removeItem('quizState');
+    quizState = null;
+
     document.getElementById('main').innerHTML = `
     <div class="max-w-md mx-auto p-6 bg-white dark:bg-gray-800 rounded shadow text-center">
       <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Quiz Complete</h2>
@@ -589,12 +578,10 @@ function endQuiz() {
   `;
 
     document.getElementById('quiz-retry').addEventListener('click', () => {
-        // restart: reshuffle and reset counters
-        startQuiz(quizState.setId);
+        startQuiz(setId);  // Use the saved setId
     });
     document.getElementById('quiz-back-to-set').addEventListener('click', () => {
-        storage.setCurrentSetId(quizState.setId);
-        quizState = null;
+        storage.setCurrentSetId(setId);  // Use the saved setId
         page = "create";
         renderPage();
     });
@@ -642,6 +629,31 @@ function initDarkMode() {
 
 }
 
-// Initial render
-initDarkMode();
-renderPage();
+// only render in browsers
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    // Initial render
+    initDarkMode();
+    renderPage();
+}
+
+// Export for testing
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    storage,
+    sets,
+    cards,
+    page,
+    quizState,
+    startQuiz,
+    submitAnswer,
+    endQuiz,
+    shuffle,
+    normalizeAnswer,
+    escapeHtml,
+    renderPage,
+    renderFlashcards,
+    recreateForm,
+    deleteCardFromCurrentSet,
+    initDarkMode
+  };
+}
